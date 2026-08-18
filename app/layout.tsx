@@ -11,7 +11,7 @@ const unbounded = Unbounded({
 });
 
 export const metadata: Metadata = {
-  title: "Scène 02 — Card Shuffle",
+  title: "Card Shuffle",
   description:
     "Boucle de cartes projets reproduite depuis la maquette motion After Effects de l'équipe.",
 };
