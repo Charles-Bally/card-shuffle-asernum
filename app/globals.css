@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #161618;
+  --ink: #ececea;
+  --card: #151517;
+  --card-line: rgba(255, 255, 255, 0.1);
+  --muted: #8b8b92;
+  --accent: #f4650f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-card: var(--card);
+  --color-card-line: var(--card-line);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-unbounded);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-geist), system-ui, sans-serif;
+}
+
+/* le damier AE vit sur un calque dédié : il peut s'éteindre en fondu
+   quand la scène passe en mode session (mood propre, fond nu) */
+.ae-canvas {
+  position: relative;
+  isolation: isolate;
+}
+
+.ae-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: repeating-conic-gradient(
+    rgba(255, 255, 255, 0.032) 0% 25%,
+    transparent 0% 50%
+  );
+  background-size: 26px 26px;
+  opacity: 1;
+  transition: opacity 0.9s ease;
+}
+
+body[data-mode="session"] .ae-canvas::before {
+  opacity: 0;
+}
+
+.stage {
+  --card-w: clamp(232px, 26vw, 340px);
+  --card-r: calc(var(--card-w) * 0.145);
+}
+
+/* des ombres qui épousent la carte : décalage minime, flou contenu,
+   spread négatif — jamais de nappe détachée sous la carte */
+.stage .card-shell {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 2px 5px rgba(0, 0, 0, 0.45),
+    0 10px 22px -14px rgba(0, 0, 0, 0.6);
+  transition: box-shadow 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stage.is-open .card-shell {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 4px 10px rgba(0, 0, 0, 0.4),
+    0 22px 44px -22px rgba(0, 0, 0, 0.7);
+}
+
+/* réglage de la boucle : rail hairline, poucet accent */
+.loop-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 112px;
+  height: 12px;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.loop-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.loop-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(244, 101, 15, 0.16);
+  transition: box-shadow 0.25s ease;
+}
+
+.loop-range:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 5px rgba(244, 101, 15, 0.24);
+}
+
+.loop-range::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.loop-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.loop-range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+/* fondu localisé des bords pendant les recouvrements */
+.stage .card-inner {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fadeL, 0%),
+    #000 calc(100% - var(--fadeR, 0%)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fadeL, 0%),
+    #000 calc(100% - var(--fadeR, 0%)),
+    transparent 100%
+  );
+}
