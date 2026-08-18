@@ -36,13 +36,29 @@ const SEQ_DUR = 2 * STEP + HOLD + MOVE;
 // creux de la plongée : la carte qui traverse s'enfonce puis remonte
 const DIVE_SCALE = 0.87;
 const DIVE_Y = 30;
-const DIVE_DIM = 0.62;
 
-const SLOTS: Record<Role, { x: number; rot: number; scale: number; z: number; dim: number }> = {
-  left: { x: -74, rot: -7, scale: 0.98, z: 2, dim: 0.42 },
-  center: { x: 0, rot: 0, scale: 1, z: 3, dim: 0 },
-  right: { x: 74, rot: 7, scale: 0.98, z: 1, dim: 0.42 },
+const SLOTS: Record<Role, { x: number; rot: number; scale: number; z: number }> = {
+  left: { x: -74, rot: -7, scale: 0.98, z: 2 },
+  center: { x: 0, rot: 0, scale: 1, z: 3 },
+  right: { x: 74, rot: 7, scale: 0.98, z: 1 },
 };
+
+// trois rendus de recouvrement : « complet » = relais de lumière entier,
+// « plans » = aucun jeu d'opacité, seules les bascules de z-index,
+// « subtil » = le même relais, deux fois plus discret
+type FxMode = "complet" | "plans" | "subtil";
+
+const FX: Record<FxMode, { dim: number; dive: number; fadeDive: number; fadeOut: number; fadeIn: number }> = {
+  complet: { dim: 0.42, dive: 0.62, fadeDive: 18, fadeOut: 22, fadeIn: 26 },
+  plans: { dim: 0, dive: 0, fadeDive: 0, fadeOut: 0, fadeIn: 0 },
+  subtil: { dim: 0.2, dive: 0.32, fadeDive: 9, fadeOut: 11, fadeIn: 13 },
+};
+
+const FX_MODES: { value: FxMode; label: string }[] = [
+  { value: "complet", label: "Complet" },
+  { value: "plans", label: "Plans" },
+  { value: "subtil", label: "Subtil" },
+];
 
 const FAN: Record<Role, { x: number; y: number; rot: number; scale: number }> = {
   left: { x: -46, y: 16, rot: -7, scale: 1 },
@@ -74,6 +90,9 @@ export default function CardShuffle() {
   // durée d'un tour affichée ; pilote la vitesse de lecture de la séquence
   const [loopDur, setLoopDur] = useState(3);
   const speedRef = useRef(SEQ_DUR / 3);
+  // rendu du recouvrement, lu par buildAndRun et les retours au repos
+  const [fx, setFx] = useState<FxMode>("complet");
+  const fxRef = useRef<FxMode>("complet");
   const wrapRefs = useRef<HTMLDivElement[]>([]);
   const innerRefs = useRef<HTMLDivElement[]>([]);
   const controlsRef = useRef<AnimationPlaybackControls | null>(null);
@@ -95,9 +114,9 @@ export default function CardShuffle() {
   // voiles et fondus de bords pilotés par MotionValues, jamais en ciblant les
   // éléments : une animation WAAPI pausée par le hover reprendrait sinon la
   // main à la fin du geste d'ouverture et refigerait les cartes en sombre
-  const shadeA = useMotionValue(SLOTS.center.dim);
-  const shadeB = useMotionValue(SLOTS.right.dim);
-  const shadeC = useMotionValue(SLOTS.left.dim);
+  const shadeA = useMotionValue(0);
+  const shadeB = useMotionValue(FX.complet.dim);
+  const shadeC = useMotionValue(FX.complet.dim);
   const shadeMvs = [shadeA, shadeB, shadeC];
   const fadeLA = useMotionValue(0);
   const fadeLB = useMotionValue(0);
@@ -165,7 +184,8 @@ export default function CardShuffle() {
     for (let step = 0; step < 3; step++) {
       const t = step * STEP + HOLD;
       const { center: c, right: r, left: l } = roles;
-      const dim = SLOTS.left.dim;
+      const e = FX[fxRef.current];
+      const dim = e.dim;
 
       seq.push(
         // la gauche plonge derrière et traverse, bords en fondu,
@@ -182,17 +202,17 @@ export default function CardShuffle() {
         ],
         [
           fadeLMvs[l],
-          [0, 18, 0],
+          [0, e.fadeDive, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [
           fadeRMvs[l],
-          [0, 18, 0],
+          [0, e.fadeDive, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [
           shadeMvs[l],
-          [dim, DIVE_DIM, dim],
+          [dim, e.dive, dim],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         // la carte avant glisse vers la gauche : elle reste lisible et ne
@@ -204,7 +224,7 @@ export default function CardShuffle() {
         ],
         [
           fadeRMvs[c],
-          [0, 22, 0],
+          [0, e.fadeOut, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [shadeMvs[c], [0, dim], { at: t, duration: MOVE, ease: LATE_IN }],
@@ -217,7 +237,7 @@ export default function CardShuffle() {
         ],
         [
           fadeLMvs[r],
-          [0, 26, 0],
+          [0, e.fadeIn, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [shadeMvs[r], [dim, 0], { at: t, duration: MOVE, ease: EARLY_OUT }],
@@ -232,6 +252,49 @@ export default function CardShuffle() {
     setLoopDur(secs);
     speedRef.current = SEQ_DUR / secs;
     if (controlsRef.current) controlsRef.current.speed = speedRef.current;
+  };
+
+  // voile de repos du rendu courant : centre nu, côtés voilés selon l'effet
+  const restDim = (role: Role) => (role === "center" ? 0 : FX[fxRef.current].dim);
+
+  const selectFx = (next: FxMode) => {
+    if (next === fxRef.current) return;
+    fxRef.current = next;
+    setFx(next);
+    // éventail ouvert ou repli en cours : le retour au repos lira fxRef
+    if (openRef.current || busyRef.current) return;
+    if (reduced || !controlsRef.current) {
+      ROLES.forEach((role) => shadeMvs[baseRolesRef.current[role]].set(restDim(role)));
+      return;
+    }
+    // boucle en vol : on repose les cartes sur leurs slots avec les nouveaux
+    // voiles, puis on reconstruit la séquence — même mécanique que le repli
+    busyRef.current = true;
+    controlsRef.current.pause();
+    const roles = rolesAt(clock.get());
+    if (timerRef.current) clearTimeout(timerRef.current);
+    ROLES.forEach((role) => {
+      const i = roles[role];
+      const s = SLOTS[role];
+      zMvs[i].set(s.z);
+      animate(
+        innerRefs.current[i],
+        { x: `${s.x}%`, rotate: s.rot, scale: s.scale, y: 0 },
+        { duration: 0.35, ease: FOLD },
+      );
+      animate(shadeMvs[i], restDim(role), { duration: 0.35, ease: "easeInOut" });
+      animate(fadeLMvs[i], 0, { duration: 0.35, ease: "easeOut" });
+      animate(fadeRMvs[i], 0, { duration: 0.35, ease: "easeOut" });
+    });
+    timerRef.current = setTimeout(() => {
+      if (openRef.current) {
+        busyRef.current = false;
+        return;
+      }
+      controlsRef.current?.stop();
+      buildAndRun(roles);
+      busyRef.current = false;
+    }, 360);
   };
 
   useEffect(() => {
@@ -343,7 +406,7 @@ export default function CardShuffle() {
       );
       animate(fadeLMvs[i], 0, { duration: 0.55 * d, ease: "easeOut" });
       animate(fadeRMvs[i], 0, { duration: 0.55 * d, ease: "easeOut" });
-      animate(shadeMvs[i], s.dim, { duration: 0.55 * d, ease: "easeInOut" });
+      animate(shadeMvs[i], restDim(role), { duration: 0.55 * d, ease: "easeInOut" });
     });
     // une fois les cartes reposées, la boucle repart du point de repos courant
     if (guardRef.current) clearTimeout(guardRef.current);
@@ -353,7 +416,7 @@ export default function CardShuffle() {
       ROLES.forEach((role) => {
         const mv = shadeMvs[roles[role]];
         mv.stop();
-        mv.set(SLOTS[role].dim);
+        mv.set(restDim(role));
       });
       [...fadeLMvs, ...fadeRMvs].forEach((mv) => {
         mv.stop();
@@ -421,6 +484,23 @@ export default function CardShuffle() {
                   {loopDur.toFixed(1).replace(".", ",")}&nbsp;s
                 </span>
               </label>
+              <span className="text-white/20">·</span>
+              <div role="group" aria-label="Rendu du recouvrement" className="flex items-center gap-2.5">
+                <span>Effet</span>
+                {FX_MODES.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={fx === option.value}
+                    onClick={() => selectFx(option.value)}
+                    className={`uppercase tracking-[0.2em] outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-accent ${
+                      fx === option.value ? "text-accent" : "text-muted hover:text-ink"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
