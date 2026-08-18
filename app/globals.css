@@ -122,20 +122,5 @@ body[data-mode="session"] .ae-canvas::before {
   border-radius: 2px;
 }
 
-/* fondu localisé des bords pendant les recouvrements */
-.stage .card-inner {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 var(--fadeL, 0%),
-    #000 calc(100% - var(--fadeR, 0%)),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 var(--fadeL, 0%),
-    #000 calc(100% - var(--fadeR, 0%)),
-    transparent 100%
-  );
-}
+/* le fondu localisé des bords pendant les recouvrements est posé en style
+   inline par CardShuffle (mask-image piloté par MotionValues) */

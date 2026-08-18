@@ -5,6 +5,7 @@ import {
   AnimatePresence,
   motion,
   useAnimate,
+  useMotionTemplate,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -75,7 +76,6 @@ export default function CardShuffle() {
   const speedRef = useRef(SEQ_DUR / 3);
   const wrapRefs = useRef<HTMLDivElement[]>([]);
   const innerRefs = useRef<HTMLDivElement[]>([]);
-  const shadeRefs = useRef<HTMLDivElement[]>([]);
   const controlsRef = useRef<AnimationPlaybackControls | null>(null);
   // horloge embarquée dans la séquence : toujours synchrone avec le mouvement
   const clock = useMotionValue(0);
@@ -84,12 +84,33 @@ export default function CardShuffle() {
   const openRef = useRef(false);
   const busyRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guardRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduced = useReducedMotion();
 
   const zA = useMotionValue(SLOTS.center.z);
   const zB = useMotionValue(SLOTS.right.z);
   const zC = useMotionValue(SLOTS.left.z);
   const zMvs = [zA, zB, zC];
+
+  // voiles et fondus de bords pilotés par MotionValues, jamais en ciblant les
+  // éléments : une animation WAAPI pausée par le hover reprendrait sinon la
+  // main à la fin du geste d'ouverture et refigerait les cartes en sombre
+  const shadeA = useMotionValue(SLOTS.center.dim);
+  const shadeB = useMotionValue(SLOTS.right.dim);
+  const shadeC = useMotionValue(SLOTS.left.dim);
+  const shadeMvs = [shadeA, shadeB, shadeC];
+  const fadeLA = useMotionValue(0);
+  const fadeLB = useMotionValue(0);
+  const fadeLC = useMotionValue(0);
+  const fadeRA = useMotionValue(0);
+  const fadeRB = useMotionValue(0);
+  const fadeRC = useMotionValue(0);
+  const fadeLMvs = [fadeLA, fadeLB, fadeLC];
+  const fadeRMvs = [fadeRA, fadeRB, fadeRC];
+  const maskA = useMotionTemplate`linear-gradient(to right, transparent 0, #000 ${fadeLA}%, #000 calc(100% - ${fadeRA}%), transparent 100%)`;
+  const maskB = useMotionTemplate`linear-gradient(to right, transparent 0, #000 ${fadeLB}%, #000 calc(100% - ${fadeRB}%), transparent 100%)`;
+  const maskC = useMotionTemplate`linear-gradient(to right, transparent 0, #000 ${fadeLC}%, #000 calc(100% - ${fadeRC}%), transparent 100%)`;
+  const masks = [maskA, maskB, maskC];
 
   // parallaxe : l'éventail déployé suit subtilement le curseur
   const mx = useMotionValue(0);
@@ -136,7 +157,6 @@ export default function CardShuffle() {
   const buildAndRun = (base: Roles) => {
     baseRolesRef.current = base;
     const inner = innerRefs.current;
-    const shades = shadeRefs.current;
     let roles = base;
     const seq: AnimationSequence = [
       [clock, [0, SEQ_DUR], { at: 0, duration: SEQ_DUR, ease: "linear" }],
@@ -161,13 +181,18 @@ export default function CardShuffle() {
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [
-          inner[l],
-          { "--fadeL": ["0%", "18%", "0%"], "--fadeR": ["0%", "18%", "0%"] },
+          fadeLMvs[l],
+          [0, 18, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         [
-          shades[l],
-          { opacity: [dim, DIVE_DIM, dim] },
+          fadeRMvs[l],
+          [0, 18, 0],
+          { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
+        ],
+        [
+          shadeMvs[l],
+          [dim, DIVE_DIM, dim],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
         // la carte avant glisse vers la gauche : elle reste lisible et ne
@@ -178,11 +203,11 @@ export default function CardShuffle() {
           { at: t, duration: MOVE, ease: INOUT },
         ],
         [
-          inner[c],
-          { "--fadeR": ["0%", "22%", "0%"] },
+          fadeRMvs[c],
+          [0, 22, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
-        [shades[c], { opacity: [0, dim] }, { at: t, duration: MOVE, ease: LATE_IN }],
+        [shadeMvs[c], [0, dim], { at: t, duration: MOVE, ease: LATE_IN }],
         // l'entrante se pose par-dessus : elle s'allume dès la mi-course,
         // le regard bascule vers elle avant même qu'elle soit posée
         [
@@ -191,11 +216,11 @@ export default function CardShuffle() {
           { at: t, duration: MOVE, ease: INOUT },
         ],
         [
-          inner[r],
-          { "--fadeL": ["0%", "26%", "0%"] },
+          fadeLMvs[r],
+          [0, 26, 0],
           { at: t, duration: MOVE, times: [0, 0.5, 1], ease: "easeInOut" },
         ],
-        [shades[r], { opacity: [dim, 0] }, { at: t, duration: MOVE, ease: EARLY_OUT }],
+        [shadeMvs[r], [dim, 0], { at: t, duration: MOVE, ease: EARLY_OUT }],
       );
       roles = rotateRoles(roles);
     }
@@ -255,9 +280,11 @@ export default function CardShuffle() {
       const s = SLOTS[role];
       animate(
         innerRefs.current[i],
-        { x: `${s.x}%`, rotate: s.rot, scale: s.scale, y: 0, "--fadeL": "0%", "--fadeR": "0%" },
+        { x: `${s.x}%`, rotate: s.rot, scale: s.scale, y: 0 },
         { duration: 0.45 * d, ease: EXPO_OUT },
       );
+      animate(fadeLMvs[i], 0, { duration: 0.45 * d, ease: "easeOut" });
+      animate(fadeRMvs[i], 0, { duration: 0.45 * d, ease: "easeOut" });
       animate(
         wrapRefs.current[i],
         { x: `${FAN[role].x}%`, y: FAN[role].y, rotate: FAN[role].rot, scale: FAN[role].scale },
@@ -271,13 +298,23 @@ export default function CardShuffle() {
               delay: role === "center" ? 0 : 0.05,
             },
       );
-      animate(shadeRefs.current[i], { opacity: 0 }, { duration: 0.45 * d, ease: "easeOut" });
+      animate(shadeMvs[i], 0, { duration: 0.45 * d, ease: "easeOut" });
     });
     // les plans ne sont réordonnés qu'une fois les cartes écartées
     timerRef.current = setTimeout(() => {
       if (!openRef.current) return;
       ROLES.forEach((role) => zMvs[roles[role]].set(SLOTS[role].z));
     }, 220 * d);
+    // filet : l'éventail ouvert est un état statique — voiles et fondus à zéro,
+    // quelle que soit l'animation que la bascule a pu laisser en vol
+    if (guardRef.current) clearTimeout(guardRef.current);
+    guardRef.current = setTimeout(() => {
+      if (!openRef.current) return;
+      [...shadeMvs, ...fadeLMvs, ...fadeRMvs].forEach((mv) => {
+        mv.stop();
+        mv.set(0);
+      });
+    }, 480 * d);
   };
 
   const close = () => {
@@ -301,14 +338,27 @@ export default function CardShuffle() {
       );
       animate(
         innerRefs.current[i],
-        { x: `${s.x}%`, rotate: s.rot, scale: s.scale, y: 0, "--fadeL": "0%", "--fadeR": "0%" },
+        { x: `${s.x}%`, rotate: s.rot, scale: s.scale, y: 0 },
         { duration: 0.55 * d, ease: FOLD },
       );
-      animate(shadeRefs.current[i], { opacity: s.dim }, { duration: 0.55 * d, ease: "easeInOut" });
+      animate(fadeLMvs[i], 0, { duration: 0.55 * d, ease: "easeOut" });
+      animate(fadeRMvs[i], 0, { duration: 0.55 * d, ease: "easeOut" });
+      animate(shadeMvs[i], s.dim, { duration: 0.55 * d, ease: "easeInOut" });
     });
     // une fois les cartes reposées, la boucle repart du point de repos courant
+    if (guardRef.current) clearTimeout(guardRef.current);
     timerRef.current = setTimeout(() => {
       if (openRef.current || reduced) return;
+      // même filet qu'à l'ouverture : le repos est un état connu, on le fixe
+      ROLES.forEach((role) => {
+        const mv = shadeMvs[roles[role]];
+        mv.stop();
+        mv.set(SLOTS[role].dim);
+      });
+      [...fadeLMvs, ...fadeRMvs].forEach((mv) => {
+        mv.stop();
+        mv.set(0);
+      });
       controlsRef.current?.stop();
       buildAndRun(roles);
       busyRef.current = false;
@@ -464,15 +514,14 @@ export default function CardShuffle() {
                       x: `${s.x}%`,
                       rotate: s.rot,
                       scale: s.scale,
-                      ["--fadeL" as string]: "0%",
-                      ["--fadeR" as string]: "0%",
+                      WebkitMaskImage: masks[i],
+                      maskImage: masks[i],
                     }}
                     className="card-inner relative will-change-transform"
                   >
                     <ProjectCard project={project} blank={showBlank} />
                     <motion.div
-                      ref={(el) => { if (el) shadeRefs.current[i] = el; }}
-                      style={{ opacity: s.dim }}
+                      style={{ opacity: shadeMvs[i] }}
                       className="pointer-events-none absolute inset-0 rounded-[var(--card-r,32px)] bg-black"
                     />
                   </motion.div>
